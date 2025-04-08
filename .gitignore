@@ -1,0 +1,12 @@
+# Ignore large folders
+opticalflow/
+transformedframes/
+RAFT/
+main_video_dataset/
+
+# Python-specific
+__pycache__/
+*.pyc
+*.ipynb_checkpoints/
+*.pt
+.env

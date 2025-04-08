@@ -1,0 +1,8 @@
+torch>=1.13.0
+torchvision
+matplotlib
+numpy
+opencv-python
+pytorch-msssim
+scipy
+tqdm
