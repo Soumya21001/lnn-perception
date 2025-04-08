@@ -72,6 +72,8 @@ transform = transforms.Compose([
         Resize((32, 32)),
         ColorJitter(0.2, 0.2),
         ToTensor()])
+# transforms.Compose([transforms.Resize(256),transforms.CenterCrop(224),transforms.ToTensor(),  # Converts to [0,1] and CHW formattransforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])])
+
 
 def main():
  
@@ -88,9 +90,9 @@ def main():
         device = torch.device("cpu")
         print("No GPU found. Using CPU.")
 
-    frame_root = "/transformedframes"
-    flow_root = "/opticalflow"
-    split = "train"  # Can change to 'val' or 'test' if needed
+    frame_root = "transformedframes/"
+    flow_root = "opticalflow/"
+    split = "train/"  # Can change to 'val' or 'test' if needed
 
     transform = transforms.Compose([
         ToPILImage(),
@@ -152,11 +154,6 @@ def main():
     plt.legend()
     plt.grid(True)
     plt.show()
-    plt.savefig("lnn_model_output.png")
-    plt.close()
     
 if __name__ == "__main__":
     main()
-    
-
-

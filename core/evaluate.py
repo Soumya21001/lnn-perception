@@ -12,11 +12,6 @@ from datasetloader import FastDataLoader
 from torchvision import transforms
 from torchvision.transforms import ToPILImage, Resize, ColorJitter, ToTensor    
 
-transform = transforms.Compose([
-        ToPILImage(),
-        Resize((32, 32)),
-        ColorJitter(0.2, 0.2),
-        ToTensor()])
 
 def evaluate(model, dataloader, device, save_vis=False, vis_dir='./eval_vis'):
     model.eval()
@@ -60,8 +55,8 @@ def evaluate(model, dataloader, device, save_vis=False, vis_dir='./eval_vis'):
             count += 1
 
             if save_vis and batch_idx == 0:
-                vis_pred_frames = pred_frame[:2].cpu()
-                vis_target_frames = target[:2].cpu()
+                vis_pred_frames = pred_frame[:2].to(device)
+                vis_target_frames = target[:2].to(device)
 
     # Average metrics
     for k in metrics:
@@ -94,18 +89,21 @@ def main():
         model = torch.nn.DataParallel(model)
     model.to(device)
 
-    checkpoint_path = "LNN_model_final.pth"
+    checkpoint_path = "LNN_model.pth"
     if os.path.exists(checkpoint_path):
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        model = torch.load(checkpoint_path, map_location=device, weights_only=False)
         print("Loaded checkpoint from", checkpoint_path)
     else:
         print("No checkpoint found. Evaluating untrained model.")
 
-    frame_root = "BDD100K/transformedframes"
-    flow_root = "BDD100K/opticalflow"
+    frame_root = "/home/stu4/s16/st1370/BDD100K/transformedframes"
+    flow_root = "/home/stu4/s16/st1370/BDD100K/opticalflow"
     split = "val"  # or "test" as needed
 
-    transform = transform 
+    transform = transforms.Compose([
+        ToPILImage(),
+        Resize((32, 32)),
+        ToTensor()]) 
     dataset = AVPerceptionDataset(frame_root=frame_root, flow_root=flow_root, split=split, seq_length=5, transform=transform)
     dataloader = FastDataLoader(dataset, batch_size=512, shuffle=False, num_workers=16, pin_memory=True, persistent_workers=True)
 
