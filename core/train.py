@@ -88,8 +88,8 @@ def main():
         device = torch.device("cpu")
         print("No GPU found. Using CPU.")
 
-    frame_root = "../../BDD100K/transformedframes"
-    flow_root = "../../BDD100K/opticalflow"
+    frame_root = "/transformedframes"
+    flow_root = "/opticalflow"
     split = "train"  # Can change to 'val' or 'test' if needed
 
     transform = transforms.Compose([
