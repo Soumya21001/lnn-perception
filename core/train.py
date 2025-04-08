@@ -152,7 +152,11 @@ def main():
     plt.legend()
     plt.grid(True)
     plt.show()
+    plt.savefig("lnn_model_output.png")
+    plt.close()
     
+if __name__ == "__main__":
+    main()
     
 
 
