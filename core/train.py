@@ -1,4 +1,4 @@
-from utils.loss_functions import psnr_loss, temporal_contrastive_loss, optical_flow_consistency_loss,ssim_loss, smooth_loss
+from loss_functions import psnr_loss, temporal_contrastive_loss, optical_flow_consistency_loss,ssim_loss, smooth_loss
 from datasetloader import AVPerceptionDataset, FastDataLoader
 from lnn_model import FlowEnhancedLNN, LTCCell, FeatureExtractor
 from collections import defaultdict
@@ -14,7 +14,6 @@ from torchvision.transforms import ToPILImage, Resize, ColorJitter, ToTensor
 
 
 def get_module(model):
-    """Utility to safely access the base model when using DataParallel."""
     return model.module if isinstance(model, torch.nn.DataParallel) else model
 
 def train_epoch(model, dataloader, optimizer, device):
@@ -79,18 +78,18 @@ def main():
     if torch.cuda.is_available():
         num_gpus = torch.cuda.device_count()
         device = torch.device("cuda")
-        print(f"🟢 Using CUDA device: {torch.cuda.get_device_name(0)}")
+        print(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
         if num_gpus > 1:
-            print(f"🟢 Multiple GPUs detected ({num_gpus})")
+            print(f"Multiple GPUs detected ({num_gpus})")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
-        print("🍎 Using Apple MPS backend.")
+        print("Using Apple MPS backend.")
     else:
         device = torch.device("cpu")
-        print("⚪ No GPU found. Using CPU.")
+        print("No GPU found. Using CPU.")
 
-    frame_root = "BDD100K/transformedframes"
-    flow_root = "BDD100K/opticalflow"
+    frame_root = "../../BDD100K/transformedframes"
+    flow_root = "../../BDD100K/opticalflow"
     split = "train"  # Can change to 'val' or 'test' if needed
 
     transform = transforms.Compose([
@@ -117,9 +116,10 @@ def main():
     history = defaultdict(list)
 
 
-    num_epochs = 2
+    num_epochs = 10
+    
     for epoch in range(num_epochs):
-        print(f"\n📆 Epoch {epoch + 1}/{num_epochs}")
+        print(f"\nEpoch {epoch + 1}/{num_epochs}")
         start_time = time.time()
 
         metrics = train_epoch(model, dataloader, optimizer, device)
@@ -128,18 +128,18 @@ def main():
         for k, v in metrics.items():
             history[k].append(v)
 
-        print(f"🧮 Loss: {metrics['total']:.4f} | "
+        print(f"Loss: {metrics['total']:.4f} | "
               f"Flow: {metrics['flow']:.4f} | "
               f"Smooth: {metrics['smooth']:.4f} | "
               f"PSNR: {metrics['psnr']:.4f} | "
               f"SSIM: {metrics['ssim']:.4f} | "
               f"Contrastive: {metrics['contrastive']:.4f} | "
               f"Recon: {metrics['recon_loss']:.4f}")
-        print(f"⏱️ Duration: {duration:.2f} sec")
+        print(f"Duration: {duration:.2f} sec")
         
-    final_ckpt_path = "FlowEnhancedLNN_full_model.pth"
+    final_ckpt_path = "LNN_model.pth"
     torch.save(model, final_ckpt_path)
-    print(f"✅ Full model saved to {final_ckpt_path}")
+    print(f"Full model saved to {final_ckpt_path}")
 
 
     plt.figure(figsize=(10, 5))

@@ -25,7 +25,7 @@ class AVPerceptionDataset(Dataset):
         flow_split_dir = os.path.join(flow_root, split)
 
         video_ids = sorted(os.listdir(frame_split_dir))
-        print(f"🔍 Found {len(video_ids)} video folders in split '{split}'")
+        print(f"Found {len(video_ids)} video folders in split '{split}'")
 
         for vid in video_ids:
             frame_dir = os.path.join(frame_split_dir, vid)
@@ -38,7 +38,7 @@ class AVPerceptionDataset(Dataset):
             flow_paths = sorted(glob(os.path.join(flow_dir, "flow_*.npy")), key=self._flow_sort_key)
 
             if len(frame_paths) < seq_length or len(flow_paths) < seq_length - 1:
-                print(f"⚠️ Skipping video {vid}: Not enough data ({len(frame_paths)} frames, {len(flow_paths)} flows)")
+                print(f"Skipping video {vid}: Not enough data ({len(frame_paths)} frames, {len(flow_paths)} flows)")
                 continue
 
             for i in range(len(frame_paths) - seq_length + 1):
@@ -46,7 +46,7 @@ class AVPerceptionDataset(Dataset):
                 seq_flows = flow_paths[i:i + seq_length - 1]
                 self.samples.append((seq_frames, seq_flows))
 
-        print(f"✅ Total valid sequences collected: {len(self.samples)}")
+        print(f"Total valid sequences collected: {len(self.samples)}")
 
     def __len__(self):
         return len(self.samples)
