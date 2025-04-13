@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 
 class FeatureExtractor(nn.Module):
-    def __init__(self, input_channels=3, output_dim=64):
+    def __init__(self, input_channels=3, output_dim=128):
         super().__init__()
         
         # Load pretrained ResNet18 and modify
@@ -29,7 +29,7 @@ class FeatureExtractor(nn.Module):
 
     def forward(self, x):
         x = self.backbone(x)         # [B, 512, 1, 1]
-        x = x.view(x.size(0), -1)    # Flatten to [B, 512]
+        x = x.view(x.size(0), 512)    # Flatten to [B, 512]
         x = self.project(x)          # Project to [B, 64]
         return x
     
@@ -55,10 +55,11 @@ class LTCCell(nn.Module):
 
 
 class FlowEnhancedLNN(nn.Module):
-    def __init__(self, feature_dim=64, hidden_dim=64):
+    def __init__(self, feature_dim=128, hidden_dim=128):
         super().__init__()
         self.feature_extractor = FeatureExtractor()
         self.lnn_cell = LTCCell(feature_dim, hidden_dim)
+        #self.project = nn.Linear(hidden_dim, 512 * 7 * 7)
         self.decoder = nn.Linear(hidden_dim, 3 * 32 * 32)
         self.decoder_bn = nn.BatchNorm1d(3 * 32 * 32)
         
@@ -87,10 +88,13 @@ class FlowEnhancedLNN(nn.Module):
             h_t = self.lnn_cell(features, h_prev)
             h_states.append(h_t)
             h_prev = h_t
-
+        
         pred_frame = self.decoder(h_states[-1])  # [B, 3*32*32]
         pred_frame = self.decoder_bn(pred_frame)  # Align distribution with normalized targets
-        pred_frame = pred_frame.view(batch_size, 3, 32, 32)
+       
+        pred_frame = pred_frame.view(batch_size, 3, 32,32)
+        pred_frame = pred_frame.clamp(0, 1)
+        pred_frame = F.interpolate(pred_frame,size=(32,32),mode='bilinear',align_corners=False)
 
         pred_flows = []
         for t in range(1, seq_len):
