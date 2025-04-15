@@ -9,12 +9,7 @@ import torch
 from tqdm import tqdm
 
 def get_rotation(video_path):
-    cmd = [
-        'ffprobe', '-v', 'error',
-        '-select_streams', 'v:0',
-        '-show_entries', 'stream_tags=rotate',
-        '-of', 'json',
-        video_path]
+    cmd = ['ffprobe', '-v', 'error','-select_streams', 'v:0','-show_entries', 'stream_tags=rotate','-of', 'json',video_path]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     output = json.loads(result.stdout)
     rotate = output.get("streams", [{}])[0].get("tags", {}).get("rotate", "0")
@@ -26,24 +21,18 @@ def extract_frames(video_path, output_dir, rotation, fps=None):
     transpose_map = {
         90: 'transpose=1',        # 90 clockwise
         180: 'transpose=2,transpose=2',  # 180 degrees = 2x 90ccw
-        270: 'transpose=2'        # 90 counter-clockwise
-    }
+        270: 'transpose=2'}       # 90 counter-clockwise
 
     filters = transpose_map.get(rotation, None)
 
     # Build command
-    cmd = [
-        "ffmpeg",
-        "-i", video_path,
-        "-map_metadata", "-1" ]
+    cmd = ["ffmpeg","-i", video_path,"-map_metadata", "-1" ]
 
     vf_filters = []
     if filters:
         vf_filters.append(filters)
     if fps is not None:
         vf_filters.append(f"fps={fps}")
-
-    
     if vf_filters:
         cmd += ["-vf", ",".join(vf_filters)]
 
@@ -51,9 +40,8 @@ def extract_frames(video_path, output_dir, rotation, fps=None):
     
     subprocess.run(cmd)
     
-    
-video_folder = "/Users/st/Projects/BDD100K/videos/train"
-output_root = "/Users/st/Projects/BDD100K/ffmpegframes"
+video_folder = "./train"
+output_root = "./ffmpegframes"
 
 for video_file in os.listdir(video_folder):
     if video_file.endswith(('.mp4', '.mov', '.avi')):
@@ -66,16 +54,10 @@ for video_file in os.listdir(video_folder):
 
 random.seed(42)
 
-transform = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),  # Converts to [0,1] and CHW format
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225])])
+transform = transforms.Compose([transforms.Resize(256),transforms.CenterCrop(224),transforms.ToTensor()])
 
-
-main_folder = '/Users/st/Projects/BDD100K/ffmpegframes'
-output_root = '/Users/st/Projects/BDD100K/transformedframes'  # Save processed frames here
+main_folder = './ffmpegframes'
+output_root = './transformedframes'  # Save processed frames here
 splits = ['train', 'val', 'test']
 os.makedirs(output_root, exist_ok=True)
 
@@ -113,5 +95,4 @@ for split in splits:
             img = Image.open(input_frame_path).convert('RGB')
             transformed = transform(img)
 
-            # Save as .pt tensor file
             torch.save(transformed, output_frame_path)
