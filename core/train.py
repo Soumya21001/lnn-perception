@@ -1,6 +1,6 @@
-from loss_functions import psnr_loss, temporal_contrastive_loss, optical_flow_consistency_loss,ssim_loss, smooth_loss
+from loss_functions import psnr_score, temporal_contrastive_loss, optical_flow_consistency_loss,ssim_score, smooth_loss
 from datasetloader import AVPerceptionDataset, FastDataLoader
-from lnn_model import FlowEnhancedLNN, LTCCell, FeatureExtractor
+from lnn_model import FlowEnhancedLNN
 from collections import defaultdict
 from tqdm import tqdm
 import torch
@@ -10,7 +10,34 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from torchvision import transforms
-from torchvision.transforms import ToPILImage, Resize, ColorJitter, ToTensor
+from torchvision.transforms import ToPILImage, Resize, ToTensor
+import random
+import matplotlib.pyplot as plt
+
+def visualize_prediction(pred, target, epoch, save_dir="visuals"):
+    import os
+    os.makedirs(save_dir, exist_ok=True)
+    
+    pred_np = pred[0].permute(1, 2, 0).cpu().detach().numpy()
+    target_np = target[0].permute(1, 2, 0).cpu().detach().numpy()
+    pred_np = np.clip(pred_np, 0, 1)
+    target_np = np.clip(target_np, 0, 1)
+
+    # Plot
+    plt.figure(figsize=(12,6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(target_np)
+    plt.title("Ground Truth")
+    plt.axis("off")
+    plt.subplot(1, 2, 2)
+    plt.imshow(pred_np)
+    plt.title("Predicted Frame")
+    plt.axis("off")
+
+    # Save
+    path = os.path.join(save_dir, f"epoch_{epoch:03d}.png")
+    plt.savefig(path)
+    plt.close()
 
 
 def get_module(model):
@@ -21,19 +48,25 @@ def train_epoch(model, dataloader, optimizer, device):
     metrics = defaultdict(float)
     count = 0
 
-    for frames, flow_gt in tqdm(dataloader):
+    for batch in tqdm(dataloader):
+        if batch is None:
+            continue  
+        frames, flow_gt = batch
         frames = frames.to(device)
         flow_gt = flow_gt.to(device)
         target = frames[:, -1] #next frame
+        target = target.clamp(0, 1)
 
         optimizer.zero_grad()
         pred_frame, pred_flow = model(frames)
+        pred_frame = pred_frame.clamp(0, 1)
+        pred_flow = pred_flow.clamp(0, 1)
         
         #losses
         loss_recon = F.mse_loss(pred_frame, target)
-        psnr = psnr_loss(pred_frame, target)
+        psnr = psnr_score(pred_frame, target)
         ssim = torch.tensor(0.0)
-        ssim = ssim_loss(pred_frame, target)
+        ssim = ssim_score(pred_frame, target)
         
         features = []
         core_model = get_module(model)
@@ -48,9 +81,10 @@ def train_epoch(model, dataloader, optimizer, device):
         flow_loss = optical_flow_consistency_loss(pred_flow, flow_gt)
         smooth = smooth_loss(pred_flow)
 
-        total_loss = loss_recon + contrastive + flow_loss
+        total_loss = loss_recon + contrastive + flow_loss + smooth
         total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) 
         optimizer.step()
 
         metrics['total'] += total_loss.item()
@@ -66,16 +100,15 @@ def train_epoch(model, dataloader, optimizer, device):
         metrics[k] /= count
     return metrics
 
-
-transform = transforms.Compose([
-        ToPILImage(),
-        Resize((32, 32)),
-        ColorJitter(0.2, 0.2),
-        ToTensor()])
-# transforms.Compose([transforms.Resize(256),transforms.CenterCrop(224),transforms.ToTensor(),  # Converts to [0,1] and CHW formattransforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])])
-
-
 def main():
+    
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
  
     if torch.cuda.is_available():
         num_gpus = torch.cuda.device_count()
@@ -90,14 +123,13 @@ def main():
         device = torch.device("cpu")
         print("No GPU found. Using CPU.")
 
-    frame_root = "transformedframes/"
-    flow_root = "opticalflow/"
-    split = "train/"  # Can change to 'val' or 'test' if needed
+    frame_root = "transformed_frames/"
+    flow_root = "optical_flow/"
+    split = "train/"  
 
     transform = transforms.Compose([
         ToPILImage(),
-        Resize((32, 32)),
-        ColorJitter(0.2, 0.2),
+        Resize(64),
         ToTensor()])
 
     dataset = AVPerceptionDataset(
@@ -106,19 +138,15 @@ def main():
         split=split,
         seq_length=5,
         transform=transform)
-    dataloader = FastDataLoader(dataset, batch_size=512, shuffle=True, num_workers=16, pin_memory=True, persistent_workers=True)
-    
+    dataloader = FastDataLoader(dataset, batch_size=160, shuffle=True, num_workers=6, pin_memory=True)
     
     model = FlowEnhancedLNN()
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
     model.to(device)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     history = defaultdict(list)
-
-
-    num_epochs = 10
+    num_epochs = 30
     
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
@@ -139,21 +167,39 @@ def main():
               f"Recon: {metrics['recon_loss']:.4f}")
         print(f"Duration: {duration:.2f} sec")
         
-    final_ckpt_path = "LNN_model.pth"
-    torch.save(model, final_ckpt_path)
-    print(f"Full model saved to {final_ckpt_path}")
-
-
-    plt.figure(figsize=(10, 5))
+        if (epoch + 1) % 3 == 0:
+            torch.cuda.empty_cache()
+        
+        if (epoch + 1) % 2 == 0:
+            model.eval()
+            with torch.no_grad():
+                for frames, _ in dataloader:
+                    frames = frames.to(device)
+                    target = frames[:, -1]
+                    pred_frame, _ = model(frames)
+                    pred_frame = pred_frame.clamp(0, 1)
+                    target = target.clamp(0, 1)
+                    visualize_prediction(pred_frame, target, epoch + 1)
+                    break  
+        
+    plt.figure(figsize=(12, 6))
     plt.plot(history['total'], label='Total Loss')
     plt.plot(history['psnr'], label='PSNR')
-    plt.plot(history['contrastive'], label='Contrastive')
-    plt.title("Training Metrics")
+    plt.plot(history['ssim'], label='SSIM')
     plt.xlabel("Epoch")
     plt.ylabel("Value")
+    plt.title("Training Progress (LNN)")
     plt.legend()
     plt.grid(True)
+    plt.savefig(f"LNN_training_plot.png")
+    print(f"📈 Plot saved as LNN_training_plot.png")
     plt.show()
+    
+    final_ckpt_path = "LNN_model.pth"
+    torch.save(history, f"LNN_history.pth")
+    torch.save(model, final_ckpt_path)
+    print(f"Full model saved to {final_ckpt_path}")
+    
     
 if __name__ == "__main__":
     main()
