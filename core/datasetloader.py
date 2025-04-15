@@ -8,7 +8,7 @@ import cv2
 from prefetch_generator import BackgroundGenerator
 
 class FastDataLoader(DataLoader):
-    """A DataLoader wrapper that prefetches data in the background."""
+    # A DataLoader wrapper that prefetches data in the background.
     def __iter__(self):
         return BackgroundGenerator(super().__iter__())
 
@@ -20,10 +20,8 @@ class AVPerceptionDataset(Dataset):
         self.frame_cache = {} if cache_data else None
         self.flow_cache = {} if cache_data else None
         self.samples = []
-
         frame_split_dir = os.path.join(frame_root, split)
         flow_split_dir = os.path.join(flow_root, split)
-
         video_ids = sorted(os.listdir(frame_split_dir))
         print(f"Found {len(video_ids)} video folders in split '{split}'")
 
@@ -52,37 +50,40 @@ class AVPerceptionDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        frame_paths, flow_paths = self.samples[idx]
+        try:
+            frame_paths, flow_paths = self.samples[idx]
+
+            frames = []
+            for fp in frame_paths:
+                if self.cache_data and fp in self.frame_cache:
+                    frame = self.frame_cache[fp]
+                else:
+                    frame = torch.load(fp)
+                    if self.cache_data:
+                        self.frame_cache[fp] = frame
+                if self.transform:
+                    frame = self.transform(frame)
+                frames.append(frame)
+            frames = torch.stack(frames)  # (T, 3, H, W)
+
+            flows = []
+            for fp in flow_paths:
+                if self.cache_data and fp in self.flow_cache:
+                    flow = self.flow_cache[fp]
+                else:
+                    flow_np = np.load(fp)  # shape: (H, W, 2)
         
+                    flow_np = cv2.resize(flow_np, (224, 224), interpolation=cv2.INTER_LINEAR)
+                    flow = torch.from_numpy(flow_np).permute(2, 0, 1).float().div(224.0)
+                    if self.cache_data:
+                        self.flow_cache[fp] = flow
+                flows.append(flow)
+            flows = torch.stack(flows)  # (T-1, 2, H, W)
 
-        frames = []
-        for fp in frame_paths:
-            if self.cache_data and fp in self.frame_cache:
-                frame = self.frame_cache[fp]
-            else:
-                frame = torch.load(fp)
-                if self.cache_data:
-                    self.frame_cache[fp] = frame
-            if self.transform:
-                frame = self.transform(frame)
-            frames.append(frame)
-        frames = torch.stack(frames)  # (T, 3, H, W)
-
-        flows = []
-        for fp in flow_paths:
-            if self.cache_data and fp in self.flow_cache:
-                flow = self.flow_cache[fp]
-            else:
-                flow_np = np.load(fp)  # shape: (H, W, 2)
-    
-                flow_np = cv2.resize(flow_np, (224, 224), interpolation=cv2.INTER_LINEAR)
-                flow = torch.from_numpy(flow_np).permute(2, 0, 1).float().div(224.0)
-                if self.cache_data:
-                    self.flow_cache[fp] = flow
-            flows.append(flow)
-        flows = torch.stack(flows)  # (T-1, 2, H, W)
-
-        return frames, flows
+            return frames, flows
+        except Exception as e:
+            print(f"Error loading sample {idx}: {e}")
+            return None
 
     def _frame_sort_key(self, path):
         match = re.search(r"frame_(\d+)\.pt", path)
