@@ -7,9 +7,7 @@ import torch.nn.functional as F
 class FeatureExtractor(nn.Module):
     def __init__(self, input_channels=3, output_dim=128):
         super().__init__()
-        
-        # Load pretrained ResNet18 and modify
-        resnet = models.resnet18(pretrained=True)
+        resnet = models.resnet18(pretrained=True)   #pretrained ResNet18
         
         if input_channels != 3:
             resnet.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -24,13 +22,12 @@ class FeatureExtractor(nn.Module):
             resnet.layer3,
             resnet.layer4,
             resnet.avgpool)
-        
         self.project = nn.Linear(512, output_dim)
 
     def forward(self, x):
-        x = self.backbone(x)         # [B, 512, 1, 1]
-        x = x.view(x.size(0), 512)    # Flatten to [B, 512]
-        x = self.project(x)          # Project to [B, 64]
+        x = self.backbone(x)        
+        x = x.view(x.size(0), 512)    
+        x = self.project(x)          
         return x
     
 class LTCCell(nn.Module):
@@ -59,10 +56,16 @@ class FlowEnhancedLNN(nn.Module):
         super().__init__()
         self.feature_extractor = FeatureExtractor()
         self.lnn_cell = LTCCell(feature_dim, hidden_dim)
-        #self.project = nn.Linear(hidden_dim, 512 * 7 * 7)
-        self.decoder = nn.Linear(hidden_dim, 3 * 32 * 32)
-        self.decoder_bn = nn.BatchNorm1d(3 * 32 * 32)
-        
+        self.decoder_fc = nn.Linear(hidden_dim, 256 * 4 * 4)
+        self.decoder = nn.Sequential(nn.BatchNorm1d(256 * 4 * 4),
+        nn.Unflatten(1, (256, 4, 4)),  
+        nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1), 
+        nn.ReLU(),
+        nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),   
+        nn.ReLU(),
+        nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1),    
+        nn.Sigmoid())  # output in [0,1]
+
         self.flow_head = nn.Sequential(
             nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
@@ -75,8 +78,7 @@ class FlowEnhancedLNN(nn.Module):
             nn.ConvTranspose2d(2, 2, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(2, 2, kernel_size=2, stride=2, padding=1, output_padding=0),
-            nn.Tanh()
-        )
+            nn.Tanh())
         self.flow_embed = nn.Linear(hidden_dim, 32 * 4 * 4)
     
     def forward(self, frames):
@@ -88,13 +90,10 @@ class FlowEnhancedLNN(nn.Module):
             h_t = self.lnn_cell(features, h_prev)
             h_states.append(h_t)
             h_prev = h_t
-        
-        pred_frame = self.decoder(h_states[-1])  # [B, 3*32*32]
-        pred_frame = self.decoder_bn(pred_frame)  # Align distribution with normalized targets
-       
+        pred_frame = self.decoder_fc(h_states[-1]) 
+        pred_frame = self.decoder(pred_frame)  
         pred_frame = pred_frame.view(batch_size, 3, 32,32)
-        pred_frame = pred_frame.clamp(0, 1)
-        pred_frame = F.interpolate(pred_frame,size=(32,32),mode='bilinear',align_corners=False)
+        pred_frame = F.interpolate(pred_frame,size=(64,64),mode='bilinear',align_corners=False)
 
         pred_flows = []
         for t in range(1, seq_len):
@@ -103,7 +102,7 @@ class FlowEnhancedLNN(nn.Module):
             flow = self.flow_head(x)
             flow = F.interpolate(flow, size=(224, 224), mode='bilinear', align_corners=True)
             pred_flows.append(flow)
-        pred_flows = torch.stack(pred_flows, dim=1)  # [B, seq_len-1, 2, 224, 224]
+        pred_flows = torch.stack(pred_flows, dim=1) 
 
         return pred_frame, pred_flows
 
