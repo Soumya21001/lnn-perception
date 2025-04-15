@@ -1,94 +1,96 @@
-class CNN(nn.Module):
-    def __init__(self):
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from collections import defaultdict
+from tqdm import tqdm
+from core.lnn_model import FeatureExtractor
+
+class CNNBaseline(nn.Module):
+    def __init__(self, feature_dim=128):
         super().__init__()
-        base_model = efficientnet_b0(pretrained=True)
-        self.encoder = nn.Sequential(*list(base_model.features.children()))
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1280, 512, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(128, 3, kernel_size=4, stride=2, padding=1),
-            nn.Sigmoid())
-
-    def forward(self, x):  # x: [B, 3, H, W]
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        self.feature_extractor = FeatureExtractor()
+        self.decoder = nn.Linear(feature_dim, 3 * 32 * 32)
+        self.decoder_bn = nn.BatchNorm1d(3 * 32 * 32)
+        self.flow_head = nn.Sequential(
+            nn.Linear(feature_dim, 32 * 4 * 4),
+            nn.ReLU(),
+            nn.Unflatten(1, (32, 4, 4)),
+            nn.ConvTranspose2d(32, 16, 4, 2, 1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 8, 4, 2, 1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(8, 4, 4, 2, 1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(4, 2, 4, 2, 1),
+            nn.Tanh())
     
-class CNNLSTM(nn.Module):
-    def __init__(self, hidden_dim=512, lstm_layers=1):
+    def forward(self, frames):
+        B, T, C, H, W = frames.shape
+        features = [self.feature_extractor(frames[:, t]) for t in range(T)]  
+        features = torch.stack(features, dim=1) 
+
+        pred_frame_feat = features[:, -1]  # [B, D]
+        pred_frame = self.decoder(pred_frame_feat)
+        pred_frame = self.decoder_bn(pred_frame).view(B, 3, 32 , 32 ).clamp(0, 1)
+        pred_frame = F.interpolate(pred_frame,size=(64,64),mode='bilinear',align_corners=False)
+
+        pred_flows = []
+        for t in range(1, T):
+            motion_feat = features[:, t] - features[:, t - 1].detach()
+            x = self.flow_head[0](motion_feat)         
+            x = self.flow_head[1](x)                   
+            x = self.flow_head[2](x).view(B, 32, 4, 4)  
+            flow = self.flow_head[3:](x)                
+            flow = F.interpolate(flow, size=(224, 224), mode="bilinear", align_corners=True)
+            pred_flows.append(flow)
+
+        pred_flows = torch.stack(pred_flows, dim=1) 
+
+        return pred_frame, pred_flows
+
+
+class CNNLSTMBaseline(nn.Module):
+    def __init__(self, feature_dim=128, hidden_dim=128):
         super().__init__()
-        base_model = efficientnet_b0(pretrained=True)
-        self.encoder = nn.Sequential(*list(base_model.features.children()))
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.lstm = nn.LSTM(input_size=1280, hidden_size=hidden_dim, num_layers=lstm_layers, batch_first=True)
-        self.decoder = nn.Sequential(
-            nn.Linear(hidden_dim, 512 * 10 * 10),
-            nn.ReLU(inplace=True),
-            nn.Unflatten(1, (512, 10, 10)),
-            nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(128, 3, kernel_size=4, stride=2, padding=1),
-            nn.Sigmoid())
+        self.feature_extractor = FeatureExtractor()
+        self.lstm = nn.LSTM(feature_dim, hidden_dim, batch_first=True)
+        self.decoder = nn.Linear(hidden_dim, 3 * 32 * 32)
+        self.decoder_bn = nn.BatchNorm1d(3 * 32 * 32)
+        self.flow_head = nn.Sequential(
+            nn.Linear(hidden_dim, 32 * 4 * 4),
+            nn.ReLU(),
+            nn.Unflatten(1, (32, 4, 4)),
+            nn.ConvTranspose2d(32, 16, 4, 2, 1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 8, 4, 2, 1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(8, 4, 4, 2, 1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(4, 2, 4, 2, 1),
+            nn.Tanh())
 
-    def forward(self, x_seq):  
-        batch_size, seq_len, _, H, W = x_seq.size()
-        features = []
+    def forward(self, frames):
+        B, T, C, H, W = frames.shape
+        features = [self.feature_extractor(frames[:, t]) for t in range(T)]
+        features = torch.stack(features, dim=1)
+        lstm_out, _ = self.lstm(features)
+        h_t = lstm_out[:, -1]
+        pred_frame = self.decoder(h_t)
+        pred_frame = self.decoder_bn(pred_frame).view(B, 3, 32, 32).clamp(0, 1)
+        pred_frame = F.interpolate(pred_frame,size=(64,64),mode='bilinear',align_corners=False)
+        
+        pred_flows = []
+        for t in range(1, T):
+            motion_feat = lstm_out[:, t] - lstm_out[:, t - 1].detach() 
+            x = self.flow_head[0](motion_feat)  
+            x = self.flow_head[1](x)            
+            x = self.flow_head[2](x).view(B, 32, 4, 4)  
+            flow = self.flow_head[3:](x)        
+            flow = F.interpolate(flow, size=(224,224), mode="bilinear", align_corners=True)
+            pred_flows.append(flow)
 
-        for t in range(seq_len):
-            f = self.encoder(x_seq[:, t])
-            f = self.global_pool(f).squeeze(-1).squeeze(-1)  
-            features.append(f)
-
-        feature_seq = torch.stack(features, dim=1) 
-        lstm_out, _ = self.lstm(feature_seq)
-        last_output = lstm_out[:, -1, :] 
-
-        out = self.decoder(last_output)
-        return out 
-    
-def get_baseline_model(name, device='cuda'):
-    if name == 'cnn_only':
-        model = CNN()
-    elif name == 'cnn_lstm':
-        model = CNNLSTM()
-    else:
-        raise ValueError(f"Unknown model name: {name}")
-    return model.to(device)
-
-def train_baseline(model, dataloader, optimizer, device):
-    model.train()
-    metrics = defaultdict(float)
-    count = 0
-
-    for batch in tqdm(dataloader, desc="Training"):
-        frames = batch['rgb'].to(device)
-        target = batch['target'].to(device)
-
-        optimizer.zero_grad()
-        if hasattr(model, 'lstm'):
-            pred_frame = model(frames)
-        else:
-            pred_frame = model(frames[:, -1])
-
-        loss_recon = F.mse_loss(pred_frame, target)
-        ssim_val = ssim(pred_frame, target, data_range=1.0, size_average=True)
-        psnr_val = psnr(pred_frame, target)
-
-        total_loss = loss_recon + (1 - ssim_val)
-        total_loss.backward()
-        optimizer.step()
-
-        metrics['total'] += total_loss.item()
-        metrics['recon'] += loss_recon.item()
-        metrics['psnr'] += psnr_val.item()
-        metrics['ssim'] += ssim_val.item()
-        count += 1
-
-    for k in metrics:
-        metrics[k] /= count
-    return metrics
+        pred_flows = torch.stack(pred_flows, dim=1)  
+        return pred_frame, pred_flows
 
 
 
