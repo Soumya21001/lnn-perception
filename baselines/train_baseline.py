@@ -6,10 +6,10 @@ from tqdm import tqdm
 from torchvision import transforms
 from torchvision.transforms import ToPILImage, Resize, ToTensor
 import matplotlib.pyplot as plt
-from datasetloader import AVPerceptionDataset, FastDataLoader
-from loss_functions import psnr_score, ssim_score, temporal_contrastive_loss, optical_flow_consistency_loss, smooth_loss
+from core.datasetloader import AVPerceptionDataset, FastDataLoader
+from core.loss_functions import psnr_score, ssim_score, temporal_contrastive_loss, optical_flow_consistency_loss, smooth_loss
 from baselines import CNNBaseline, CNNLSTMBaseline  # You should define these
-from train import visualize_prediction
+from core.train import visualize_prediction
 
 
 
