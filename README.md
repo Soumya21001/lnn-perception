@@ -160,8 +160,6 @@ Note: The project is tested on CUDA-enabled GPUs and can also run on CPU with re
 └── requirements.txt
 ```
 
-
-
 # Data Preparation
 1.	Download Raw BDD100K
 Download from: https://www.kaggle.com/datasets/robikscube/driving-video-with-object-tracking
@@ -208,8 +206,8 @@ Internally this script:
 	•RAFT: Optical flow backbone from princeton-vl/RAFT
 	•BDD100K Dataset: bdd-data.berkeley.edu
 	•LNN Theory:
-		•Tallec & Ollivier, “Can Recurrent Neural Networks Warp Time?” (ICLR 2018)
-		•Lai et al., “Modeling Receptive Fields with ODE Nets” (NeurIPS 2019)
+		•Rubanova et al., **“Latent Ordinary Differential Equations for Irregularly‑Sampled Time Series”**, NeurIPS 2019.  
+                •Pan et al., **“Liquid Time‑Constant Networks for Continuous‑Time Sequence Modeling”**, ICML Workshop 2022.  
 	•Special Thanks: RIT AI faculty and Prof Zhiqiang Tao
 
 
