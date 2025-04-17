@@ -66,7 +66,10 @@ Note: The project is tested on CUDA-enabled GPUs and can also run on CPU with re
 ├── baselines.py               # CNN & CNN-LSTM
 ├── datasetloader.py           # Custom DataLoader
 ├── loss_functions.py          # PSNR, SSIM, Flow Loss, Reconstruction Loss, etc.
-├── visuals/                   # Prediction & flow visualizations
+└── visualisations/            # Prediction & flow visualizations
+    ├── eval_visuals_LNN_model/
+    ├── eval_visuals_cnn_baseline/
+    └── eval_visuals_cnn_lstm_baseline/                  
 ├── README.md  
 └── requirements.txt
 ```
