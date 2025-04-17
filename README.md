@@ -11,6 +11,92 @@ This project presents **FlowEnhancedLNN**, a novel architecture that combines a 
 
 ## Project Figure
 
+
+```plaintext
+           ┌────────────────────────┐
+           │ 1) Raw Video Frames    |
+           │    X = [x₁, x₂, …, xₜ]  | 
+           └─────────────┬──────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │ 2) Preprocessing       │
+           │    • Resize → .pt      │
+           └─────────────┬──────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │ 3) Transformed Frames  │
+           │    {train,val,test}/…  │
+           └─────────────┬──────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │ 4) RAFT Optical Flow   │
+           │    • Compute F̂ₜ → .npy  │
+           └─────────────┬──────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │ 5) Feature Extraction  │
+           │    CNN → f₁, f₂, …, fₜ  │
+           └─────────────┬──────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │ 6) LNN Temporal Module │
+           │    Update hidden hₜ     │
+           └───────┬───────┬────────┘
+                   │       │
+           ┌───────▼───┐   │
+           │ Frame     │   │
+           │ Decoder   │   │
+           │ (Linear + │   │
+           │ Upsample) │   │
+           └───────┬───┘   │
+                   │       │
+                   │       │
+                   │       ▼
+                   │   ┌───────────────┐
+                   │   │ Flow Decoder  │
+                   │   │(ConvTranspose)│
+                   │   └──────┬────────┘
+                   │          │
+                   │          │
+                   ▼          ▼
+           ┌───────────────────┐
+           │ 7) Predictions    |  
+           │  • Frame ŷₜ        |    
+           │  • Flow F̂ₜ         |    
+           └─────────────┬─────┘
+                         │
+                         ▼
+           ┌────────────────────────────┐
+           │ 8) Loss Module             │
+           │  • ℓ_recon = MSE(ŷₜ,xₜ)     │  
+           │  • ℓ_ssim  = 1–SSIM(…)     │
+           │  • ℓ_psnr  = PSNR(…)       │
+           │  • ℓ_contr = Contrastive   │
+           │  • ℓ_flow  = L₁(F̂ₜ,Fₜ)      │
+           │  • ℓ_smooth = Smoothness   │
+           │  • ℓ_total = α(…)+β(…)+γ(…)│
+           └─────────────┬──────────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │ 9) Backprop & Update   │
+           │    via Adam Optimizer  │
+           └─────────────┬──────────┘
+                         │
+                         ▼
+           ┌────────────────────────┐
+           │10) Evaluation          │
+           │    • SSIM, PSNR, …     │
+           │    • Save metrics      │
+           │    • Visualize results │
+           └────────────────────────┘
+```
+
 ## Getting Started
 
 ## Prerequisites
