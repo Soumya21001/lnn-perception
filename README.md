@@ -13,13 +13,33 @@ This project presents **FlowEnhancedLNN**, a novel architecture that combines a 
 
 ## Getting Started
 
+## Prerequisites
+	• Linux or macOS machine (GPU recommended)
+	• Conda installed
+	• Access to BDD100K dataset (link provided below)
+	• RAFT repository cloned under core/raft/ 
+
 ### Environment Setup
 
-```bash
+# 1. Create & activate conda environment
+```
 conda create -n avmodel python=3.11 -y
 conda activate avmodel
+```
+
+# 2. Install Python dependencies
+```
 pip install -r requirements.txt
 ```
+
+# 3. Prepare RAFT code
+```
+git clone https://github.com/princeton-vl/RAFT core/raft
+cd core/raft
+pip install -r requirements.txt    # RAFT’s own deps
+cd ../../
+```
+
 
 
 Note: The project is tested on CUDA-enabled GPUs and can also run on CPU with reduced performance.
@@ -32,21 +52,25 @@ Note: The project is tested on CUDA-enabled GPUs and can also run on CPU with re
 	•	RAFT model and utils: clone RAFT repo
 
 # Directory Structure
-.
-├── train.py                  # Train LNN
-├── train_baseline.py         # Train baselines (CNN or CNN+LSTM)
-├── evaluate.py               # Evaluate LNN model
-├── evaluate_baseline.py      # Evaluate baselines
-├── lnn_model.py              # LNN model architecture
-├── baselines.py              # Baseline CNN and CNN+LSTM
-├── datasetloader.py          # Custom Dataset + DataLoader
-├── loss_functions.py         # All loss functions
-├── visuals/                 # Saved frame predictions
-├── checkpoints/             # Saved models
-├── transformed_frames/      # Preprocessed frames (in .pt format)
-├── optical_flow/            # Precomputed optical flow (.npy)
-├── README.md
+```
+├── core/
+│   ├── raft/                  # RAFT repo clone & utils
+│   |── utils/  	       # InputPadder, helper scripts
+|   |-- models/		       # RAFT model paths
+├── preprocess_frames.py       # Preprocess and save .pt frames
+├── compute_optical_flow.py    # Generate .npy flows via RAFT
+├── train.py                   # Train LNN model
+├── train_baseline.py          # Train CNN and/or CNN+LSTM
+├── evaluate.py                # Eval LNN, CNN, CNN-LSTM
+├── lnn_model.py               # LNN architecture
+├── baselines.py               # CNN & CNN-LSTM
+├── datasetloader.py           # Custom DataLoader
+├── loss_functions.py          # PSNR, SSIM, Flow Loss, Reconstruction Loss, etc.
+├── visuals/                   # Prediction & flow visualizations
+├── README.md  
 └── requirements.txt
+```
+
 
 
 # Data Preparation
@@ -66,12 +90,21 @@ Output:
 transformed_frames/{train,val,test}/{video_id}/frame_0000.pt
 ```
 3. Generate Optical Flow
+clone RAFT repo under core/
+```
+git clone https://github.com/princeton-vl/RAFT.git raft
+```
+Note: Adjust the python imports in your scripts 
  ```
    python compute_optical_flow.py \
   --model-path raft/models/raft-kitti.pth \
   --input-root transformed_frames \
   --output-root optical_flow
   ```
+Internally this script:
+	1. Loads RAFT with raft-kitti.pth.
+	2. Pads and runs pairwise frames.
+	3. Saves flow_XXXX.npy under optical_flow/{split}/{video_id}/.
 
 ##  Key Results
 
