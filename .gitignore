@@ -3,8 +3,8 @@ opticalflow/
 transformedframes/
 RAFT/
 main_video_dataset/
-visualisations/
-**/*.png
+# visualisations/
+# **/*.png
 
 # === PyTorch model files ===
 model/
