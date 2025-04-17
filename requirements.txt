@@ -1,8 +1,24 @@
-torch>=1.13.0
-torchvision
-matplotlib
-numpy
-opencv-python
-pytorch-msssim
-scipy
-tqdm
+# Core dependencies
+torch>=1.8.0
+torchvision>=0.9.0
+numpy>=1.19.0
+matplotlib>=3.3.0
+opencv-python>=4.5.0
+Pillow>=8.1.0
+
+# Loss and metrics
+pytorch-msssim>=0.2.1
+
+# Utilities
+tqdm>=4.50.0
+pandas>=1.1.0
+prefetch-generator>=1.0.1
+
+# (If using RAFT’s own requirements)
+# You’ll also need any deps from core/raft/requirements.txt, for example:
+# - typing_extensions
+# - requests
+# - kornia
+
+# Optional (for notebook visualization)
+jupyterlab>=3.0.0
