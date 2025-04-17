@@ -1,12 +1,38 @@
-# Ignore large folders
+# === Project-specific: Ignore large folders and datasets ===
 opticalflow/
 transformedframes/
 RAFT/
 main_video_dataset/
+visualisations/
+**/*.png
 
-# Python-specific
+# === PyTorch model files ===
+model/
+**/*.pt
+**/*.pth
+
+# === Python bytecode ===
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.pkl
+
+# === Jupyter Notebook checkpoints ===
 *.ipynb_checkpoints/
-*.pt
-.env
+
+# === Virtual environments ===
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# === VSCode settings ===
+.vscode/
+
+# === OS-specific ===
+.DS_Store
+Thumbs.db
