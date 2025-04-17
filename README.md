@@ -28,8 +28,8 @@ Note: The project is tested on CUDA-enabled GPUs and can also run on CPU with re
 	•	torch, torchvision
 	•	numpy, matplotlib, opencv-python
 	•	pytorch_msssim
-	•	tqdm, pandas
-	•	prefetch_generator
+	•	tqdm, pandas, prefetch_generator
+	•	RAFT model and utils: clone RAFT repo
 
 # Directory Structure
 .
@@ -56,9 +56,39 @@ Download from: https://www.kaggle.com/datasets/robikscube/driving-video-with-obj
 2.	Frame & Flow Preprocessing
 Run preprocessing scripts
 ```bash
-python preprocess_frames.py
+python preprocess_frames.py \
+  --input ./videos/train \
+  --output ./transformed_frames \
+  --resize 224
 ```
+Output:
+```
+transformed_frames/{train,val,test}/{video_id}/frame_0000.pt
+```
+3. Generate Optical Flow
+ ```
+   python compute_optical_flow.py \
+  --model-path raft/models/raft-kitti.pth \
+  --input-root transformed_frames \
+  --output-root optical_flow
+  ```
 
+##  Key Results
+
+| Model          | SSIM ↑ | PSNR ↑ | Flow Loss ↓ | Smoothness ↓ |
+| -------------- | :----: | :----: | :---------: | :----------: |
+| CNN Baseline   |  0.41  |  19.2  |    0.026    |    0.017     |
+| CNN + LSTM     |  0.44  |  20.1  |    0.021    |    0.015     |
+| **LNN (Proposed Model)** | **0.47** | **21.4** |  **0.017**  |  **0.013**   |
+
+
+# References & Acknowledgements
+	•RAFT: Optical flow backbone from princeton-vl/RAFT
+	•BDD100K Dataset: bdd-data.berkeley.edu
+	•LNN Theory:
+		•Tallec & Ollivier, “Can Recurrent Neural Networks Warp Time?” (ICLR 2018)
+		•Lai et al., “Modeling Receptive Fields with ODE Nets” (NeurIPS 2019)
+	•Special Thanks: RIT AI faculty and Prof Zhiqiang Tao
 
 
 
