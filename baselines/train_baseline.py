@@ -144,7 +144,7 @@ def main():
     plt.title("Training Metrics")
     plt.show()
     plt.savefig(f"{BASELINE_TYPE}_training_plot.png")
-    print(f"📈 Plot saved as {BASELINE_TYPE}_training_plot.png")
+    print(f"Plot saved as {BASELINE_TYPE}_training_plot.png")
 
 if __name__ == "__main__":
     main()

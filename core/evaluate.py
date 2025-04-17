@@ -1,94 +1,128 @@
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-import numpy as np
-import os
 from torchvision import transforms
 from torchvision.transforms import ToPILImage, Resize, ToTensor
-from lnn_model import FlowEnhancedLNN
-from datasetloader import AVPerceptionDataset, FastDataLoader
-from loss_functions import psnr_score, ssim_score, optical_flow_consistency_loss, smooth_loss
+import matplotlib.pyplot as plt
+from collections import defaultdict
 from tqdm import tqdm
+import os
+
+from datasetloader import AVPerceptionDataset, FastDataLoader
+from loss_functions import (
+    psnr_score,
+    ssim_score,
+    optical_flow_consistency_loss,
+)
+from baselines.baselines import CNNBaseline, CNNLSTMBaseline
+from lnn_model import FlowEnhancedLNN
 
 
 def visualize_prediction(pred, target, save_path):
-    pred_np = pred[0].permute(1, 2, 0).cpu().detach().numpy()
-    target_np = target[0].permute(1, 2, 0).cpu().detach().numpy()
+    pred = pred[0].permute(1, 2, 0).cpu().numpy().clip(0, 1)
+    target = target[0].permute(1, 2, 0).cpu().numpy().clip(0, 1)
 
-    pred_np = np.clip(pred_np, 0, 1)
-    target_np = np.clip(target_np, 0, 1)
-
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(10, 4))
     plt.subplot(1, 2, 1)
-    plt.imshow(target_np)
+    plt.imshow(target)
     plt.title("Ground Truth")
     plt.axis("off")
 
     plt.subplot(1, 2, 2)
-    plt.imshow(pred_np)
-    plt.title("Predicted Frame")
+    plt.imshow(pred)
+    plt.title("Predicted")
     plt.axis("off")
 
     plt.savefig(save_path)
     plt.close()
 
-def evaluate(model, dataloader, device, save_dir="lnn_eval_visuals", num_visuals=5):
+
+def evaluate(model, dataloader, device, save_dir):
     model.eval()
-    os.makedirs(save_dir, exist_ok=True)
-    total_ssim, total_psnr, total_recon, total_flow, total_smooth = 0, 0, 0, 0, 0
+    metrics = defaultdict(float)
     count = 0
-    
+
+    os.makedirs(save_dir, exist_ok=True)
+
     with torch.no_grad():
         for batch_idx, (frames, flow_gt) in enumerate(tqdm(dataloader)):
-            frames = frames.to(device)
-            flow_gt = flow_gt.to(device)
+            if frames is None or flow_gt is None:
+                continue
+
+            # Move data to device
+            frames, flow_gt = frames.to(device), flow_gt.to(device)
             target = frames[:, -1].clamp(0, 1)
 
+            # Forward pass
             pred_frame, pred_flow = model(frames)
             pred_frame = pred_frame.clamp(0, 1)
+            pred_flow = pred_flow.clamp(0, 1)
 
-            total_ssim += ssim_score(pred_frame, target).item()
-            total_psnr += psnr_score(pred_frame, target).item()
-            total_recon += F.mse_loss(pred_frame, target).item()
-            total_flow += optical_flow_consistency_loss(pred_flow, flow_gt).item()
-            total_smooth += smooth_loss(pred_flow).item()
+            # Compute losses and metrics
+            loss_recon = F.mse_loss(pred_frame, target)
+            psnr = psnr_score(pred_frame, target)
+            ssim = ssim_score(pred_frame, target)
+            flow_loss = optical_flow_consistency_loss(pred_flow, flow_gt)
+
+            # features = [
+            #     model.feature_extractor(frames[:, t]) for t in range(frames.size(1))
+            # ]
+            # features = torch.stack(features, dim=1)
+
+            # Model-specific metrics
+            metrics["psnr"] += psnr.item()
+            metrics["ssim"] += ssim.item()
+            metrics["recon"] += loss_recon.item()
+            metrics["flow"] += flow_loss.item()
             count += 1
 
-            #Save N visuals
-            if batch_idx < num_visuals :
-                save_path = os.path.join(save_dir, f"lnn_eval_batch_{batch_idx+1}.png")
+            # Save visualizations for first N batches
+            N = 5  # Number of visuals to save
+            if batch_idx < N:
+                save_path = os.path.join(
+                    save_dir, f"eval_batch_{batch_idx+1}.png")
                 visualize_prediction(pred_frame, target, save_path)
 
-    print("\n Evaluation Metrics")
-    print(f"SSIM Score:                {total_ssim / count:.4f}")
-    print(f"PSNR Score:                {total_psnr / count:.4f}")
-    print(f"Reconstruction Loss : {total_recon / count:.4f}")
-    print(f"Flow Consistency Loss:     {total_flow / count:.4f}")
+    for k in metrics:
+        metrics[k] /= count
+
+    print("\nEvaluation Metrics:")
+    for k, v in metrics.items():
+        print(f"{k}: {v:.4f}")
+
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Evaluating on:", device)
+    print("Device:", device)
 
-    transform = transforms.Compose([
-        ToPILImage(),
-        Resize(64),  
-        ToTensor()])
+    transform = transforms.Compose([ToPILImage(), Resize(64), ToTensor()])
 
     dataset = AVPerceptionDataset(
-        frame_root="transformed_frames/",
-        flow_root="optical_flow/",
-        split="val",  # Change to "test" if needed
+        "transformed_frames/",
+        "optical_flow/",
+        split="val",
         seq_length=5,
-        transform=transform
+        transform=transform,
+    )
+    dataloader = FastDataLoader(
+        dataset, batch_size=64, shuffle=False, num_workers=6)
+
+    model_dict = {
+        CNNBaseline(): "cnn_baseline",
+        CNNLSTMBaseline(): "cnn_lstm_baseline",
+        FlowEnhancedLNN(): "LNN_model",
+    }
+
+    for model in model_dict:
+        print(f"\nEvaluating {model_dict[model]}...")
+        model.load_state_dict(
+            torch.load(f"{model_dict[model]}.pth", map_location=device)
         )
+        model.to(device)
+        evaluate(
+            model, dataloader, device, save_dir=f"eval_visuals_{model_dict[model]}"
+        )
+        print()
 
-    dataloader = FastDataLoader(dataset, batch_size=64, shuffle=False, num_workers=6, pin_memory=True)
-
-    model = torch.load("LNN_model.pth", map_location=device, weights_only=False)
-    
-    model.to(device)
-
-    evaluate(model, dataloader, device)
 
 if __name__ == "__main__":
     main()
